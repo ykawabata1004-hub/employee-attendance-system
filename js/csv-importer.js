@@ -5,39 +5,74 @@
 const CSVImporter = {
     /**
      * Import Concur CSV
-     * Expected format: Employee ID, Name, Start Date, End Date, Destination
+     * Supports both comma and tab delimited formats, and dynamic column mapping.
      */
     importConcurCSV(csvText, scope = 'all', scopeValue = null) {
         try {
-            const lines = csvText.trim().split('\n');
+            const lines = csvText.trim().split(/\r?\n/);
             if (lines.length < 2) {
                 throw new Error('CSV file is empty');
             }
 
-            // Skip header row
+            // Detect delimiter (tab or comma)
+            const firstLine = lines[0];
+            const delimiter = firstLine.includes('\t') ? '\t' : ',';
+
+            // Parse headers and find column mapping
+            const headers = this.parseCSVLine(lines[0], delimiter);
+            const mapping = {
+                employeeId: headers.findIndex(h => h.includes('Employee ID')),
+                name: headers.findIndex(h => h.includes('Employee') && !h.includes('ID')),
+                startDate: headers.findIndex(h => h.includes('Leg1 Start') || h === 'Start Date'),
+                endDate: headers.findIndex(h => h.includes('Leg1 End') || h === 'End Date'),
+                destination: headers.findIndex(h => h.includes('Leg1 Country') || h.includes('Destination') || h.includes('Travel Request Name'))
+            };
+
+            // Basic validation of headers
+            if (mapping.employeeId === -1 || (mapping.startDate === -1 && mapping.endDate === -1)) {
+                // If mapping fails, try fallback to original simple format (0-4)
+                if (delimiter === ',') {
+                    mapping.employeeId = 0;
+                    mapping.name = 1;
+                    mapping.startDate = 2;
+                    mapping.endDate = 3;
+                    mapping.destination = 4;
+                } else {
+                    throw new Error('Could not identify required columns (Employee ID, Start Date, End Date)');
+                }
+            }
+
             const dataLines = lines.slice(1);
             const imported = [];
             const errors = [];
 
             dataLines.forEach((line, index) => {
-                try {
-                    const columns = this.parseCSVLine(line);
+                if (!line.trim()) return;
 
-                    if (columns.length < 5) {
-                        errors.push(`Row ${index + 2}: Insufficient columns`);
+                try {
+                    const columns = this.parseCSVLine(line, delimiter);
+
+                    const employeeId = columns[mapping.employeeId];
+                    const rawStartDate = mapping.startDate !== -1 ? columns[mapping.startDate] : '';
+                    const rawEndDate = mapping.endDate !== -1 ? columns[mapping.endDate] : '';
+                    const destination = mapping.destination !== -1 ? columns[mapping.destination] : 'Unknown';
+
+                    if (!employeeId || !rawStartDate || !rawEndDate) {
+                        errors.push(`Row ${index + 2}: Missing required info (ID/Dates)`);
                         return;
                     }
 
-                    const [employeeId, employeeName, startDate, endDate, destination] = columns;
+                    // Normalize dates
+                    const startDate = this.normalizeDate(rawStartDate);
+                    const endDate = this.normalizeDate(rawEndDate);
 
                     // Scope check
                     if (!this.isInScope(employeeId, scope, scopeValue)) {
-                        return; // Skip
+                        return;
                     }
 
                     // Check if employee exists
                     let employee = DataModel.getEmployeeById(employeeId);
-
                     if (!employee) {
                         errors.push(`Row ${index + 2}: Employee ID ${employeeId} not found`);
                         return;
@@ -71,6 +106,30 @@ const CSVImporter = {
                 errors: [error.message]
             };
         }
+    },
+
+    /**
+     * Normalize various date formats to YYYY-MM-DD
+     */
+    normalizeDate(dateStr) {
+        if (!dateStr) return '';
+
+        // Clean string
+        let cleanDate = dateStr.trim();
+
+        // Handle YYYY/MM/DD or YYYY-MM-DD
+        if (/^\d{4}[/-]\d{1,2}[/-]\d{1,2}$/.test(cleanDate)) {
+            return cleanDate.replace(/\//g, '-').split('-').map((v, i) => i > 0 ? v.padStart(2, '0') : v).join('-');
+        }
+
+        // Handle Month Day, Year (e.g., "10 8, 2026")
+        // Since we want standard behavior, we let Date object handle it or manually parse
+        const d = new Date(cleanDate);
+        if (!isNaN(d.getTime())) {
+            return DataModel.formatDate(d);
+        }
+
+        return cleanDate; // Fallback
     },
 
     /**
@@ -154,9 +213,9 @@ const CSVImporter = {
     },
 
     /**
-     * Parse CSV line (comma-separated, double-quote aware)
+     * Parse CSV line (delimiter-separated, double-quote aware)
      */
-    parseCSVLine(line) {
+    parseCSVLine(line, delimiter = ',') {
         const result = [];
         let current = '';
         let inQuotes = false;
@@ -166,7 +225,7 @@ const CSVImporter = {
 
             if (char === '"') {
                 inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
+            } else if (char === delimiter && !inQuotes) {
                 result.push(current.trim());
                 current = '';
             } else {
