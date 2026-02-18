@@ -334,7 +334,8 @@ body {
     background: var(--status-wfh);
 }
 
-.status-business-trip {
+.status-business-trip,
+.status-business_trip {
     background: var(--status-business-trip);
 }
 
