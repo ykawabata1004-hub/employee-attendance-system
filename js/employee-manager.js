@@ -368,6 +368,27 @@ const EmployeeManager = {
     };
 
     try {
+      // Validation: Check for duplicates
+      const allEmployees = DataModel.getAllEmployees();
+
+      // Check ID uniqueness (only for new employees)
+      if (!this.editingId) {
+        const idExists = allEmployees.some(emp => emp.id.toLowerCase() === id.toLowerCase());
+        if (idExists) {
+          throw new Error('Employee ID already exists.');
+        }
+      }
+
+      // Check Email uniqueness
+      const emailExists = allEmployees.some(emp =>
+        emp.email.toLowerCase() === email.toLowerCase() &&
+        emp.id !== (this.editingId || '') // Exclude self if editing
+      );
+
+      if (emailExists) {
+        throw new Error('Email address already is use by another employee.');
+      }
+
       if (this.editingId) {
         // Update
         delete data.id; // Don't allow ID change
