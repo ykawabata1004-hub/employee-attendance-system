@@ -168,7 +168,7 @@ const CalendarView = {
     const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     return `
-      <div class="calendar-grid">
+      <div class="calendar-grid view-mode-${this.viewMode}">
         ${dayHeaders.map(day => `<div class="calendar-day-header">${day}</div>`).join('')}
         ${days.map(day => this.renderDay(day, this.currentDate.getMonth())).join('')}
       </div>
