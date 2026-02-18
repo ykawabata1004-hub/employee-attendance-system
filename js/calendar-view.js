@@ -228,7 +228,8 @@ const CalendarView = {
     const attendance = DataModel.getAttendanceByDate(dateStr);
 
     const events = employees.map(emp => {
-      const att = attendance.find(a => a.employeeId === emp.id);
+      const canonicalId = emp.id.toString().trim().toLowerCase();
+      const att = attendance.find(a => a.employeeId.toString().trim().toLowerCase() === canonicalId);
       if (!att) return null;
 
       const statusInfo = DataModel.getStatusInfo(att.status);
