@@ -230,17 +230,19 @@ const CalendarView = {
     const events = employees.map(emp => {
       const canonicalId = emp.id.toString().trim().toLowerCase();
       const att = attendance.find(a => a.employeeId.toString().trim().toLowerCase() === canonicalId);
-      if (!att) return null;
 
-      const statusInfo = DataModel.getStatusInfo(att.status);
+      // Default to 'out' if no record found
+      const status = att ? att.status : 'out';
+      const statusInfo = DataModel.getStatusInfo(status);
+
       return {
         employee: emp,
-        status: att.status,
+        status: status,
         statusInfo: statusInfo,
-        note: att.note,
-        country: att.country || ''
+        note: att ? att.note : '',
+        country: att ? att.country : ''
       };
-    }).filter(e => e !== null);
+    });
 
     const classes = ['calendar-day'];
     if (isOtherMonth) classes.push('other-month');

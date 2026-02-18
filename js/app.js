@@ -8,10 +8,26 @@ const App = {
   /**
    * Initialize application
    */
-  init() {
+  async init() {
+    // Show loading state if needed
+    console.log('App initializing...');
+
+    // Initialize DataModel (Firebase Sync)
+    await DataModel.init();
+
+    // Initialize Sample Data if necessary
+    if (typeof SampleData !== 'undefined') {
+      SampleData.initializeSampleData();
+    }
+
+    // Process QR Check-in via URL parameters
+    this.processQRCheckin();
+
     this.renderLayout();
     this.switchView('calendar');
     this.renderUserSelector();
+
+    console.log('App initialized');
   },
 
   /**
@@ -136,6 +152,43 @@ const App = {
       case 'employee':
         EmployeeManager.init();
         break;
+    }
+  },
+
+  /**
+   * Process QR code check-in from URL parameters (?checkin=office|wfh)
+   */
+  processQRCheckin() {
+    const params = new URLSearchParams(window.location.search);
+    const checkinType = params.get('checkin');
+
+    if (checkinType) {
+      const user = DataModel.getCurrentUser();
+      if (!user) {
+        alert('Please select your name first at the top-right to use QR check-in.');
+        return;
+      }
+
+      const today = DataModel.formatDate(new Date());
+      const status = checkinType.toLowerCase();
+
+      if (['office', 'wfh'].includes(status)) {
+        DataModel.addAttendance({
+          employeeId: user.id,
+          date: today,
+          status: status,
+          note: `QR Check-in (${status.toUpperCase()})`
+        });
+
+        // Remove parameter from URL without reloading
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+
+        alert(`Successfully checked in as ${status.toUpperCase()}!`);
+
+        // Refresh UI
+        this.switchView(this.currentView);
+      }
     }
   }
 };

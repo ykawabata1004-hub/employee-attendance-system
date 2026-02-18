@@ -86,6 +86,18 @@ const DataModel = {
         { value: 'sick', label: 'Sick Leave', color: '#607D8B' }
     ],
 
+    /**
+     * Priority for status determination (Higher number = Higher priority)
+     */
+    STATUS_PRIORITY: {
+        'business_trip': 100,
+        'vacation': 80,
+        'sick': 80,
+        'office': 50,
+        'wfh': 50,
+        'out': 10
+    },
+
     // ===================================
     // Helper Functions for Master Data
     // ===================================
@@ -471,13 +483,30 @@ const DataModel = {
         );
 
         if (existing) {
-            return this.updateAttendance(existing.id, { ...attendance, employeeId: canonicalId });
+            // Priority Check: Only update if new status has higher or equal priority
+            const newPriority = this.STATUS_PRIORITY[attendance.status] || 0;
+            const existingPriority = this.STATUS_PRIORITY[existing.status] || 0;
+
+            if (newPriority >= existingPriority) {
+                // Merge data (keep existing metadata if not provided in new)
+                return this.updateAttendance(existing.id, {
+                    ...attendance,
+                    employeeId: canonicalId,
+                    // Preserve country/meta if new one is empty
+                    country: attendance.country || existing.country || '',
+                    note: attendance.note || existing.note || ''
+                });
+            } else {
+                console.log(`Ignored update for ${attendance.date}: Existing ${existing.status} has higher priority than ${attendance.status}`);
+                return existing;
+            }
         }
 
         const newRecord = {
             id: this.generateId('ATT'),
             ...attendance,
             employeeId: canonicalId,
+            country: attendance.country || '',
             createdAt: new Date().toISOString()
         };
         records.push(newRecord);
