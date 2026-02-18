@@ -122,13 +122,20 @@ const CSVImporter = {
             return cleanDate.replace(/\//g, '-').split('-').map((v, i) => i > 0 ? v.padStart(2, '0') : v).join('-');
         }
 
-        // Handle Month Day, Year (e.g., "10 8, 2026")
-        // Since we want standard behavior, we let Date object handle it or manually parse
+        // Handle "Month Day, Year" or "Month Day Year" (e.g., "10 8, 2026" or "Oct 8, 2026")
+        // Special case for "10 8, 2026" which might not be parsed correctly by new Date() in all environments
+        const monthDayYearMatch = cleanDate.match(/^(\d{1,2})\s+(\d{1,2})[,\s]+(\d{4})$/);
+        if (monthDayYearMatch) {
+            const [_, m, d, y] = monthDayYearMatch;
+            return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+
         const d = new Date(cleanDate);
         if (!isNaN(d.getTime())) {
             return DataModel.formatDate(d);
         }
 
+        console.warn('Could not normalize date:', dateStr);
         return cleanDate; // Fallback
     },
 
