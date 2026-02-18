@@ -14,41 +14,49 @@ const CSVImporter = {
                 throw new Error('CSV file is empty');
             }
 
-            // Detect delimiter (tab or comma)
-            const firstNotEmptyLine = lines.find(l => l.includes('\t') || l.includes(','));
-            const delimiter = firstNotEmptyLine && firstNotEmptyLine.includes('\t') ? '\t' : ',';
+            // Detect delimiter more reliably: count occurrences in the first few lines
+            const sampleText = lines.slice(0, 10).join('\n');
+            const tabCount = (sampleText.match(/\t/g) || []).length;
+            const commaCount = (sampleText.match(/,/g) || []).length;
+            const delimiter = tabCount > commaCount ? '\t' : ',';
+
+            console.log(`Detected delimiter: ${delimiter === '\t' ? 'TAB' : 'COMMA'}`);
 
             // Find header row (search for keywords in all lines)
             let headerIndex = -1;
             let mapping = {};
 
-            for (let i = 0; i < Math.min(lines.length, 20); i++) { // Search up to first 20 lines
+            for (let i = 0; i < Math.min(lines.length, 30); i++) { // Search up to first 30 lines
                 const row = this.parseCSVLine(lines[i], delimiter).map(h => h.trim().toLowerCase());
                 const potentialMapping = {
-                    employeeId: row.findIndex(h => h.includes('employee id')),
-                    name: row.findIndex(h => h === 'employee' || (h.includes('employee') && !h.includes('id'))),
+                    employeeId: row.findIndex(h => h.includes('employee id') || h === 'id'),
+                    name: row.findIndex(h => h === 'employee' || h.includes('employee name') || (h.includes('employee') && !h.includes('id'))),
                     location: row.findIndex(h => h === 'branch' || h === 'location' || h.includes('location')),
-                    startDate: row.findIndex(h => h.includes('leg1 start') || h === 'start date'),
-                    endDate: row.findIndex(h => h.includes('leg1 end') || h === 'end date'),
-                    destination: row.findIndex(h => h.includes('leg1 country') || h.includes('destination') || h.includes('travel request name'))
+                    startDate: row.findIndex(h => h.includes('leg1 start') || h === 'start date' || h.includes('start date')),
+                    endDate: row.findIndex(h => h.includes('leg1 end') || h === 'end date' || h.includes('end date')),
+                    destination: row.findIndex(h => h.includes('leg1 country') || h.includes('destination') || h.includes('travel request name') || h.includes('location'))
                 };
 
-                // If we found essential columns, this is the header row
-                if (potentialMapping.employeeId !== -1 && (potentialMapping.startDate !== -1 || potentialMapping.endDate !== -1)) {
+                // Score this row as a potential header
+                let score = 0;
+                if (potentialMapping.employeeId !== -1) score += 2;
+                if (potentialMapping.startDate !== -1) score += 1;
+                if (potentialMapping.endDate !== -1) score += 1;
+                if (potentialMapping.name !== -1) score += 1;
+
+                if (score >= 3) {
                     headerIndex = i;
                     mapping = potentialMapping;
+                    console.log(`Header found at line ${i + 1} with mapping:`, mapping);
                     break;
                 }
             }
 
             // Fallback for simple format if no header found
             if (headerIndex === -1) {
-                if (delimiter === ',') {
-                    mapping = { employeeId: 0, name: 1, location: -1, startDate: 2, endDate: 3, destination: 4 };
-                    headerIndex = 0; // Assume first line is header but keyword match failed
-                } else {
-                    throw new Error('Could not identify header row (Employee ID, Start Date, End Date)');
-                }
+                console.warn('Header row not detected. Using fallback mapping.');
+                mapping = { employeeId: 0, name: 1, location: -1, startDate: 2, endDate: 3, destination: 4 };
+                headerIndex = -1; // Assume missing header, start from line 0
             }
 
             const dataLines = lines.slice(headerIndex + 1);
@@ -56,29 +64,37 @@ const CSVImporter = {
             const errors = [];
             let autoCreatedCount = 0;
 
+            const normalizedScopeValue = scopeValue ? scopeValue.trim().toLowerCase() : '';
+
             dataLines.forEach((line, index) => {
                 try {
                     const columns = this.parseCSVLine(line, delimiter);
                     if (columns.length < 2) return;
 
-                    const employeeId = columns[mapping.employeeId];
-                    const employeeName = mapping.name !== -1 ? columns[mapping.name] : 'New Employee';
-                    let employeeLocation = mapping.location !== -1 ? columns[mapping.location] : 'LDN';
-                    const rawStartDate = mapping.startDate !== -1 ? columns[mapping.startDate] : '';
-                    const rawEndDate = mapping.endDate !== -1 ? columns[mapping.endDate] : '';
-                    const destination = mapping.destination !== -1 ? columns[mapping.destination] : 'Unknown';
+                    const employeeId = (columns[mapping.employeeId] || '').trim();
+                    const employeeName = mapping.name !== -1 ? (columns[mapping.name] || 'New Employee').trim() : 'New Employee';
+                    let employeeLocation = mapping.location !== -1 ? (columns[mapping.location] || 'LDN').trim() : 'LDN';
+                    const rawStartDate = (mapping.startDate !== -1 ? columns[mapping.startDate] : '').trim();
+                    const rawEndDate = (mapping.endDate !== -1 ? columns[mapping.endDate] : '').trim();
+                    const destination = (mapping.destination !== -1 ? columns[mapping.destination] : 'Unknown').trim();
 
                     if (!employeeId || employeeId.toLowerCase() === 'employee id' || !rawStartDate || !rawEndDate) {
                         return; // Skip empty rows or duplicate headers
+                    }
+
+                    // Scope check (Robust comparison)
+                    if (scope === 'employee') {
+                        if (employeeId.toLowerCase() !== normalizedScopeValue) return;
                     }
 
                     // Normalize dates
                     const startDate = this.normalizeDate(rawStartDate);
                     const endDate = this.normalizeDate(rawEndDate);
 
-                    // Scope check
-                    if (!this.isInScope(employeeId, scope, scopeValue)) {
-                        return;
+                    // Scope check for location
+                    if (scope === 'location') {
+                        const emp = DataModel.getEmployeeById(employeeId);
+                        if (!emp || emp.location !== scopeValue) return;
                     }
 
                     // Check if employee exists, if not, create one
@@ -102,13 +118,12 @@ const CSVImporter = {
                     }
 
                     // Register business trip data
-                    const note = `Business trip to ${destination}`;
                     const records = DataModel.addAttendanceRange(
                         employeeId,
                         startDate,
                         endDate,
                         'business_trip',
-                        note
+                        `Business trip to ${destination}`
                     );
 
                     imported.push(...records);
@@ -147,7 +162,6 @@ const CSVImporter = {
         }
 
         // Handle "Month Day, Year" or "Month Day Year" (e.g., "10 8, 2026" or "Oct 8, 2026")
-        // Special case for "10 8, 2026" which might not be parsed correctly by new Date() in all environments
         const monthDayYearMatch = cleanDate.match(/^(\d{1,2})\s+(\d{1,2})[,\s]+(\d{4})$/);
         if (monthDayYearMatch) {
             const [_, m, d, y] = monthDayYearMatch;
@@ -190,10 +204,10 @@ const CSVImporter = {
 
                     const [employeeId, employeeName, startDate, endDate, leaveType, remainingDays] = columns;
 
-                    // Scope check
-                    if (!this.isInScope(employeeId, scope, scopeValue)) {
-                        return; // Skip
-                    }
+                    // Scope check (Simplified for iTrent)
+                    const normalizedId = employeeId.trim().toLowerCase();
+                    const normalizedValue = scopeValue ? scopeValue.trim().toLowerCase() : '';
+                    if (scope === 'employee' && normalizedId !== normalizedValue) return;
 
                     // Check if employee exists
                     let employee = DataModel.getEmployeeById(employeeId);
@@ -202,6 +216,8 @@ const CSVImporter = {
                         errors.push(`Row ${index + 2}: Employee ID ${employeeId} not found`);
                         return;
                     }
+
+                    if (scope === 'location' && employee.location !== scopeValue) return;
 
                     // Map leave type to status
                     let status = 'vacation';
@@ -248,7 +264,7 @@ const CSVImporter = {
      */
     parseCSVLine(line, delimiter = ',') {
         const result = [];
-        let current = '';
+        let curVal = '';
         let inQuotes = false;
 
         for (let i = 0; i < line.length; i++) {
@@ -257,39 +273,14 @@ const CSVImporter = {
             if (char === '"') {
                 inQuotes = !inQuotes;
             } else if (char === delimiter && !inQuotes) {
-                result.push(current.trim());
-                current = '';
+                result.push(curVal);
+                curVal = '';
             } else {
-                current += char;
+                curVal += char;
             }
         }
-
-        result.push(current.trim());
+        result.push(curVal);
         return result;
-    },
-
-    /**
-     * Scope check
-     */
-    isInScope(employeeId, scope, scopeValue) {
-        if (scope === 'all') {
-            return true;
-        }
-
-        const employee = DataModel.getEmployeeById(employeeId);
-        if (!employee) {
-            return false;
-        }
-
-        if (scope === 'location') {
-            return employee.location === scopeValue;
-        }
-
-        if (scope === 'employee') {
-            return employee.id === scopeValue;
-        }
-
-        return true;
     },
 
     /**

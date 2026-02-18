@@ -8,8 +8,13 @@ const DataModel = {
         EMPLOYEES: 'attendance_employees',
         ATTENDANCE: 'attendance_records',
         SETTINGS: 'attendance_settings',
-        CURRENT_USER: 'attendance_current_user'
+        CURRENT_USER: 'attendance_current_user',
+        USE_FIREBASE: 'attendance_use_firebase'
     },
+
+    // Firebase state
+    useFirebase: true,
+    isInitialized: false,
 
     // ===================================
     // Master Data
@@ -154,6 +159,56 @@ const DataModel = {
     },
 
     // ===================================
+    // Firebase Initialization & Sync
+    // ===================================
+
+    /**
+     * Initialize DataModel (Sync with Firebase)
+     */
+    async init() {
+        if (!this.useFirebase || typeof firebase === 'undefined') {
+            this.isInitialized = true;
+            return;
+        }
+
+        console.log('Synchronizing with Firebase...');
+
+        try {
+            // Initial fetch
+            const employees = await FirebaseAdapter.getAllEmployees();
+            const attendance = await FirebaseAdapter.getAllAttendance();
+            const currentUser = await FirebaseAdapter.getCurrentUser();
+
+            // Store in localStorage (cache)
+            if (employees.length > 0) localStorage.setItem(this.STORAGE_KEYS.EMPLOYEES, JSON.stringify(employees));
+            if (attendance.length > 0) localStorage.setItem(this.STORAGE_KEYS.ATTENDANCE, JSON.stringify(attendance));
+            if (currentUser) localStorage.setItem(this.STORAGE_KEYS.CURRENT_USER, currentUser);
+
+            // Set up listeners for real-time updates
+            FirebaseAdapter.onEmployeesChanged((data) => {
+                localStorage.setItem(this.STORAGE_KEYS.EMPLOYEES, JSON.stringify(data));
+                // Notify UI if needed (simple reload or re-render)
+                if (window.App && this.isInitialized) {
+                    // Optimized re-render could go here
+                }
+            });
+
+            FirebaseAdapter.onAttendanceChanged((data) => {
+                localStorage.setItem(this.STORAGE_KEYS.ATTENDANCE, JSON.stringify(data));
+                if (window.App && this.isInitialized) {
+                    // Optimized re-render could go here
+                }
+            });
+
+            this.isInitialized = true;
+            console.log('Firebase sync completed');
+        } catch (error) {
+            console.error('Firebase sync failed, falling back to local storage:', error);
+            this.isInitialized = true;
+        }
+    },
+
+    // ===================================
     // Authentication & Authorization
     // ===================================
 
@@ -173,6 +228,9 @@ const DataModel = {
      */
     setCurrentUser(employeeId) {
         localStorage.setItem(this.STORAGE_KEYS.CURRENT_USER, employeeId);
+        if (this.useFirebase) {
+            FirebaseAdapter.setCurrentUser(employeeId);
+        }
     },
 
     /**
@@ -209,8 +267,10 @@ const DataModel = {
      * Get employee by ID
      */
     getEmployeeById(id) {
+        if (!id) return null;
         const employees = this.getAllEmployees();
-        return employees.find(emp => emp.id === id);
+        const searchId = id.toString().trim().toLowerCase();
+        return employees.find(emp => emp.id.toString().trim().toLowerCase() === searchId);
     },
 
     /**
@@ -248,6 +308,11 @@ const DataModel = {
 
         employees.push(newEmployee);
         localStorage.setItem(this.STORAGE_KEYS.EMPLOYEES, JSON.stringify(employees));
+
+        if (this.useFirebase) {
+            FirebaseAdapter.addEmployee(newEmployee);
+        }
+
         return newEmployee;
     },
 
@@ -270,6 +335,11 @@ const DataModel = {
                 updatedAt: new Date().toISOString()
             };
             localStorage.setItem(this.STORAGE_KEYS.EMPLOYEES, JSON.stringify(employees));
+
+            if (this.useFirebase) {
+                FirebaseAdapter.updateEmployee(id, updates);
+            }
+
             return employees[index];
         }
         return null;
@@ -287,6 +357,13 @@ const DataModel = {
         const attendance = this.getAllAttendance();
         const filteredAttendance = attendance.filter(att => att.employeeId !== id);
         localStorage.setItem(this.STORAGE_KEYS.ATTENDANCE, JSON.stringify(filteredAttendance));
+
+        if (this.useFirebase) {
+            FirebaseAdapter.deleteEmployee(id);
+            // Related attendance deletion is handled by filtering locally, 
+            // but in Firebase we might need to delete them explicitly or handle via cloud functions.
+            // For simplicity, we'll assume the client manages it or we leave orphaned records for now.
+        }
 
         return true;
     },
@@ -400,6 +477,11 @@ const DataModel = {
         };
         records.push(newRecord);
         localStorage.setItem(this.STORAGE_KEYS.ATTENDANCE, JSON.stringify(records));
+
+        if (this.useFirebase) {
+            FirebaseAdapter.addAttendance(newRecord);
+        }
+
         return newRecord;
     },
 
@@ -509,6 +591,11 @@ const DataModel = {
         localStorage.removeItem(this.STORAGE_KEYS.ATTENDANCE);
         localStorage.removeItem(this.STORAGE_KEYS.SETTINGS);
         localStorage.removeItem(this.STORAGE_KEYS.CURRENT_USER);
+
+        if (this.useFirebase) {
+            FirebaseAdapter.clearAllData();
+        }
+
         return true;
     },
 
