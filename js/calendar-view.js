@@ -144,7 +144,7 @@ const CalendarView = {
     const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     return `
-      <div class="calendar-grid">
+      <div class="calendar-grid view-mode-${this.viewMode}">
         ${dayHeaders.map(day => `<div class="calendar-day-header">${day}</div>`).join('')}
         ${days.map(day => this.renderDay(day, month)).join('')}
       </div>
@@ -267,23 +267,29 @@ const CalendarView = {
       <div class="${classes.join(' ')}" onclick="CalendarView.onDayClick('${dateStr}')">
         <div class="calendar-day-number">${date.getDate()}</div>
         <div class="calendar-day-events">
-          ${events.slice(0, 3).map(event => {
-      const displayName = event.status === 'business_trip' && event.note ?
-        `${event.employee.name} (${event.note.substring(0, 10)}${event.note.length > 10 ? '...' : ''})` :
-        event.employee.name;
+          ${(() => {
+        const limit = this.viewMode === 'month' ? 3 : 15;
+        const visibleEvents = events.slice(0, limit);
+        const hiddenCount = events.length - limit;
 
-      const tooltip = [
-        `${event.employee.name}: ${event.statusInfo.label}`,
-        event.country ? `Country: ${event.country}` : null,
-        event.note ? `Note: ${event.note}` : null
-      ].filter(Boolean).join(' - ');
+        return visibleEvents.map(event => {
+          const displayName = event.status === 'business_trip' && event.note ?
+            `${event.employee.name} (${event.note.substring(0, 10)}${event.note.length > 10 ? '...' : ''})` :
+            event.employee.name;
 
-      return `
-            <div class="calendar-event status-${event.status}" title="${tooltip}">
-              ${displayName}
-            </div>
-          `}).join('')}
-          ${events.length > 3 ? `<div class="calendar-event-more">+${events.length - 3} more</div>` : ''}
+          const tooltip = [
+            `${event.employee.name}: ${event.statusInfo.label}`,
+            event.country ? `Country: ${event.country}` : null,
+            event.note ? `Note: ${event.note}` : null
+          ].filter(Boolean).join(' - ');
+
+          return `
+                <div class="calendar-event status-${event.status}" title="${tooltip}">
+                  ${displayName}
+                </div>
+              `;
+        }).join('') + (hiddenCount > 0 ? `<div class="calendar-event-more">+${hiddenCount} more</div>` : '');
+      })()}
         </div>
       </div>
     `;
