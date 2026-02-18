@@ -235,12 +235,20 @@ const App = {
   selectQRUser(employeeId) {
     if (!this.currentCheckinParams) return;
 
+    const { type, loc } = this.currentCheckinParams;
+    const user = DataModel.getEmployeeById(employeeId);
+
+    // Validation: Location Mismatch
+    // Only check if type is 'office' and a specific location is required by the URL
+    if (type === 'office' && loc && user.location !== loc) {
+      alert(`Location Error:\nYou belong to ${user.location}, but this QR code is for ${loc}.\nPlease use the check-in URL for your assigned location.`);
+      return;
+    }
+
     // Set current user
     DataModel.setCurrentUser(employeeId);
     this.renderUserSelector(); // Update UI header
 
-    const { type, loc } = this.currentCheckinParams;
-    const user = DataModel.getEmployeeById(employeeId);
     const today = DataModel.formatDate(new Date());
 
     if (['office', 'wfh'].includes(type)) {
@@ -250,7 +258,7 @@ const App = {
         date: today,
         status: type,
         note: `QR Check-in (${type.toUpperCase()}${locationLabel})`
-      });
+      }, true); // force=true to override existing higher priority status (e.g. WFH > Office)
 
       // Remove parameter from URL
       const newUrl = window.location.pathname;
