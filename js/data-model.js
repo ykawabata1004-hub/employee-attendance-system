@@ -93,9 +93,9 @@ const DataModel = {
         'business_trip': 100,
         'vacation': 80,
         'sick': 80,
-        'office': 50,
-        'wfh': 50,
-        'out': 10
+        'out': 50,
+        'wfh': 30,
+        'office': 10
     },
 
     // ===================================
@@ -642,6 +642,24 @@ const DataModel = {
         }
 
         return true;
+    },
+
+    /**
+     * Clean up records older than 1.5 years
+     */
+    cleanupOldRecords() {
+        const records = this.getAllAttendance();
+        const eighteenMonthsAgo = new Date();
+        eighteenMonthsAgo.setMonth(eighteenMonthsAgo.getMonth() - 18);
+        const cutoff = this.formatDate(eighteenMonthsAgo);
+
+        const filtered = records.filter(att => att.date >= cutoff);
+
+        if (filtered.length !== records.length) {
+            localStorage.setItem(this.STORAGE_KEYS.ATTENDANCE, JSON.stringify(filtered));
+            // In a real app with Firebase, we would call a delete operation here.
+            console.log(`Cleaned up ${records.length - filtered.length} old records.`);
+        }
     },
 
     /**

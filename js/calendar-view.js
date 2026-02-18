@@ -227,12 +227,23 @@ const CalendarView = {
     const employees = this.getFilteredEmployees();
     const attendance = DataModel.getAttendanceByDate(dateStr);
 
-    const events = employees.map(emp => {
+    const todayStr = DataModel.formatDate(new Date());
+    const isFuture = dateStr > todayStr;
+
+    let events = employees.map(emp => {
       const canonicalId = emp.id.toString().trim().toLowerCase();
       const att = attendance.find(a => a.employeeId.toString().trim().toLowerCase() === canonicalId);
 
-      // Default to 'out' if no record found
-      const status = att ? att.status : 'out';
+      // Default status
+      let status = att ? att.status : 'out';
+
+      // Filter for future dates: Only show trips and vacations
+      if (isFuture) {
+        if (!att || !['business_trip', 'vacation', 'sick'].includes(att.status)) {
+          return null; // Don't show regular attendance on future dates
+        }
+      }
+
       const statusInfo = DataModel.getStatusInfo(status);
 
       return {
@@ -240,9 +251,13 @@ const CalendarView = {
         status: status,
         statusInfo: statusInfo,
         note: att ? att.note : '',
-        country: att ? att.country : ''
+        country: att ? (att.country || att.destination || '') : '',
+        priority: DataModel.STATUS_PRIORITY[status] || 0
       };
-    });
+    }).filter(e => e !== null);
+
+    // Sort by priority (descending) to show most important first
+    events.sort((a, b) => b.priority - a.priority);
 
     const classes = ['calendar-day'];
     if (isOtherMonth) classes.push('other-month');

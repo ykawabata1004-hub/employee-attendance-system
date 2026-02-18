@@ -27,6 +27,9 @@ const App = {
     this.switchView('calendar');
     this.renderUserSelector();
 
+    // Cleanup old records (> 1.5 years)
+    DataModel.cleanupOldRecords();
+
     console.log('App initialized');
   },
 
