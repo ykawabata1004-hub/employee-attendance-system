@@ -424,7 +424,8 @@ const DataModel = {
      */
     getAttendanceByEmployeeAndDate(employeeId, date) {
         const records = this.getAllAttendance();
-        return records.find(att => att.employeeId === employeeId && att.date === date);
+        const normId = employeeId.toString().trim().toLowerCase();
+        return records.find(att => att.employeeId.toString().trim().toLowerCase() === normId && att.date === date);
     },
 
     /**
@@ -459,20 +460,24 @@ const DataModel = {
     addAttendance(attendance) {
         const records = this.getAllAttendance();
 
+        // Normalize employeeId to canonical ID from master
+        const employee = this.getEmployeeById(attendance.employeeId);
+        const canonicalId = employee ? employee.id : attendance.employeeId;
+
         // Check if same employee/date record exists
         const existing = this.getAttendanceByEmployeeAndDate(
-            attendance.employeeId,
+            canonicalId,
             attendance.date
         );
 
         if (existing) {
-            // Update existing record
-            return this.updateAttendance(existing.id, attendance);
+            return this.updateAttendance(existing.id, { ...attendance, employeeId: canonicalId });
         }
 
         const newRecord = {
             id: this.generateId('ATT'),
             ...attendance,
+            employeeId: canonicalId,
             createdAt: new Date().toISOString()
         };
         records.push(newRecord);

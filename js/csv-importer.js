@@ -56,7 +56,7 @@ const CSVImporter = {
             if (headerIndex === -1) {
                 console.warn('Header row not detected. Using fallback mapping.');
                 mapping = { employeeId: 0, name: 1, location: -1, startDate: 2, endDate: 3, destination: 4 };
-                headerIndex = -1; // Assume missing header, start from line 0
+                headerIndex = -1;
             }
 
             const dataLines = lines.slice(headerIndex + 1);
@@ -79,7 +79,7 @@ const CSVImporter = {
                     const destination = (mapping.destination !== -1 ? columns[mapping.destination] : 'Unknown').trim();
 
                     if (!employeeId || employeeId.toLowerCase() === 'employee id' || !rawStartDate || !rawEndDate) {
-                        return; // Skip empty rows or duplicate headers
+                        return;
                     }
 
                     // Scope check (Robust comparison)
@@ -105,7 +105,7 @@ const CSVImporter = {
                             employeeLocation = validLocations[0];
                         }
 
-                        DataModel.addEmployee({
+                        employee = DataModel.addEmployee({
                             id: employeeId,
                             name: employeeName,
                             location: employeeLocation,
@@ -117,9 +117,9 @@ const CSVImporter = {
                         autoCreatedCount++;
                     }
 
-                    // Register business trip data
+                    // Register business trip data - ALWAYS use employee.id (canonical)
                     const records = DataModel.addAttendanceRange(
-                        employeeId,
+                        employee.id,
                         startDate,
                         endDate,
                         'business_trip',
@@ -153,7 +153,6 @@ const CSVImporter = {
     normalizeDate(dateStr) {
         if (!dateStr) return '';
 
-        // Clean string
         let cleanDate = dateStr.trim();
 
         // Handle YYYY/MM/DD or YYYY-MM-DD
@@ -161,10 +160,20 @@ const CSVImporter = {
             return cleanDate.replace(/\//g, '-').split('-').map((v, i) => i > 0 ? v.padStart(2, '0') : v).join('-');
         }
 
-        // Handle "Month Day, Year" or "Month Day Year" (e.g., "10 8, 2026" or "Oct 8, 2026")
-        const monthDayYearMatch = cleanDate.match(/^(\d{1,2})\s+(\d{1,2})[,\s]+(\d{4})$/);
-        if (monthDayYearMatch) {
-            const [_, m, d, y] = monthDayYearMatch;
+        // Handle European DD/MM/YYYY or US MM/DD/YYYY
+        // Concur often uses "M D, YYYY" or "D M, YYYY"
+        const spaceMatch = cleanDate.match(/^(\d{1,2})\s+(\d{1,2})[,\s]+(\d{4})$/);
+        if (spaceMatch) {
+            let [_, p1, p2, y] = spaceMatch;
+            let m, d;
+
+            // Assume user's example (10 8, 2026 -> Oct 8) means MM DD order
+            // But if p1 > 12, it must be DD MM
+            if (parseInt(p1) > 12) {
+                d = p1; m = p2;
+            } else {
+                m = p1; d = p2;
+            }
             return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
         }
 
@@ -174,12 +183,11 @@ const CSVImporter = {
         }
 
         console.warn('Could not normalize date:', dateStr);
-        return cleanDate; // Fallback
+        return cleanDate;
     },
 
     /**
      * Import iTrent CSV
-     * Expected format: Employee ID, Name, Start Date, End Date, Leave Type, Remaining Days
      */
     importITrentCSV(csvText, scope = 'all', scopeValue = null) {
         try {
@@ -188,7 +196,6 @@ const CSVImporter = {
                 throw new Error('CSV file is empty');
             }
 
-            // Skip header row
             const dataLines = lines.slice(1);
             const imported = [];
             const errors = [];
@@ -204,14 +211,11 @@ const CSVImporter = {
 
                     const [employeeId, employeeName, startDate, endDate, leaveType, remainingDays] = columns;
 
-                    // Scope check (Simplified for iTrent)
                     const normalizedId = employeeId.trim().toLowerCase();
                     const normalizedValue = scopeValue ? scopeValue.trim().toLowerCase() : '';
                     if (scope === 'employee' && normalizedId !== normalizedValue) return;
 
-                    // Check if employee exists
                     let employee = DataModel.getEmployeeById(employeeId);
-
                     if (!employee) {
                         errors.push(`Row ${index + 2}: Employee ID ${employeeId} not found`);
                         return;
@@ -219,10 +223,8 @@ const CSVImporter = {
 
                     if (scope === 'location' && employee.location !== scopeValue) return;
 
-                    // Map leave type to status
                     let status = 'vacation';
                     let note = leaveType;
-
                     if (leaveType.includes('Sick') || leaveType.toLowerCase().includes('sick')) {
                         status = 'sick';
                         note = 'Sick leave';
@@ -230,9 +232,8 @@ const CSVImporter = {
                         note = `${leaveType} (${remainingDays} days remaining)`;
                     }
 
-                    // Register leave data
                     const records = DataModel.addAttendanceRange(
-                        employeeId,
+                        employee.id,
                         startDate,
                         endDate,
                         status,
@@ -260,7 +261,7 @@ const CSVImporter = {
     },
 
     /**
-     * Parse CSV line (delimiter-separated, double-quote aware)
+     * Parse CSV line
      */
     parseCSVLine(line, delimiter = ',') {
         const result = [];
@@ -269,7 +270,6 @@ const CSVImporter = {
 
         for (let i = 0; i < line.length; i++) {
             const char = line[i];
-
             if (char === '"') {
                 inQuotes = !inQuotes;
             } else if (char === delimiter && !inQuotes) {
@@ -283,32 +283,9 @@ const CSVImporter = {
         return result;
     },
 
-    /**
-     * Generate sample Concur CSV
-     */
     generateSampleConcurCSV() {
-        const lines = [
-            'Employee ID,Name,Start Date,End Date,Destination',
-            'EMP001,John Smith,2026-02-20,2026-02-22,Tokyo',
-            'EMP002,Sarah Johnson,2026-02-25,2026-02-27,Paris',
-            'EMP003,Michael Brown,2026-03-01,2026-03-03,London'
-        ];
-        return lines.join('\n');
-    },
-
-    /**
-     * Generate sample iTrent CSV
-     */
-    generateSampleITrentCSV() {
-        const lines = [
-            'Employee ID,Name,Start Date,End Date,Leave Type,Remaining Days',
-            'EMP004,Anna Schmidt,2026-02-18,2026-02-19,Annual Leave,15',
-            'EMP005,Thomas Müller,2026-02-21,2026-02-21,Sick Leave,20',
-            'EMP006,Emma Weber,2026-02-24,2026-02-26,Annual Leave,12'
-        ];
-        return lines.join('\n');
+        return 'Employee ID,Name,Start Date,End Date,Destination\nEMP001,John Smith,10 8, 2026,10 10, 2026,Tokyo';
     }
 };
 
-// Export globally
 window.CSVImporter = CSVImporter;
