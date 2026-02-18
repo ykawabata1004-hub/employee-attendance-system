@@ -258,7 +258,7 @@ const App = {
         date: today,
         status: type,
         note: `QR Check-in (${type.toUpperCase()}${locationLabel})`
-      });
+      }, true); // force=true to override existing higher priority status (e.g. WFH > Office)
 
       // Remove parameter from URL
       const newUrl = window.location.pathname;
@@ -271,6 +271,32 @@ const App = {
 
       // Refresh UI
       this.switchView(this.currentView);
+    }
+  },
+
+  /**
+   * Handle data updates from Firebase
+   */
+  onDataUpdated() {
+    console.log('Data updated from Firebase, refreshing UI...');
+
+    // Refresh User Selector (Header)
+    this.renderUserSelector();
+
+    // If QR User Modal is open, refresh the list
+    const qrModal = document.getElementById('qr-user-modal');
+    if (qrModal && !qrModal.classList.contains('hidden')) {
+      const searchInput = document.getElementById('qr-user-search');
+      this.renderQRUserList(searchInput ? searchInput.value : '');
+    }
+
+    // Refresh current view content
+    if (this.currentView === 'calendar') {
+      this.renderCalendar();
+    } else if (this.currentView === 'employee') {
+      if (typeof EmployeeManager !== 'undefined') {
+        EmployeeManager.render();
+      }
     }
   },
 
