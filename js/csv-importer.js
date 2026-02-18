@@ -104,9 +104,17 @@ const CSVImporter = {
                     // Check if employee exists, if not, create one
                     let employee = DataModel.getEmployeeById(employeeId);
                     if (!employee) {
-                        const validLocations = DataModel.getLocations();
                         if (!validLocations.includes(employeeLocation)) {
                             employeeLocation = validLocations[0];
+                        }
+
+                        // Check for duplicate email before creating
+                        const newEmail = `${employeeId.toLowerCase()}@company.com`;
+                        const emailExists = DataModel.getAllEmployees().some(e => e.email.toLowerCase() === newEmail);
+
+                        if (emailExists) {
+                            errors.push(`Row ${index + headerIndex + 2}: Cannot create employee ${employeeId}. Email ${newEmail} is already in use.`);
+                            return;
                         }
 
                         employee = DataModel.addEmployee({
@@ -116,7 +124,7 @@ const CSVImporter = {
                             department: 'Operations',
                             position: 'other',
                             role: 'general',
-                            email: `${employeeId.toLowerCase()}@company.com`
+                            email: newEmail
                         });
                         autoCreatedCount++;
                     }
