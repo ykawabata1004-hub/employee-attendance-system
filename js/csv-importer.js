@@ -9,50 +9,57 @@ const CSVImporter = {
      */
     importConcurCSV(csvText, scope = 'all', scopeValue = null) {
         try {
-            const lines = csvText.trim().split(/\r?\n/);
+            const lines = csvText.split(/\r?\n/).filter(line => line.trim());
             if (lines.length < 2) {
                 throw new Error('CSV file is empty');
             }
 
             // Detect delimiter (tab or comma)
-            const firstLine = lines[0];
-            const delimiter = firstLine.includes('\t') ? '\t' : ',';
+            const firstNotEmptyLine = lines.find(l => l.includes('\t') || l.includes(','));
+            const delimiter = firstNotEmptyLine && firstNotEmptyLine.includes('\t') ? '\t' : ',';
 
-            // Parse headers and find column mapping
-            const headers = this.parseCSVLine(lines[0], delimiter).map(h => h.trim().toLowerCase());
-            const mapping = {
-                employeeId: headers.findIndex(h => h.includes('employee id')),
-                name: headers.findIndex(h => h === 'employee' || (h.includes('employee') && !h.includes('id'))),
-                location: headers.findIndex(h => h === 'branch' || h === 'location' || h.includes('location')),
-                startDate: headers.findIndex(h => h.includes('leg1 start') || h === 'start date'),
-                endDate: headers.findIndex(h => h.includes('leg1 end') || h === 'end date'),
-                destination: headers.findIndex(h => h.includes('leg1 country') || h.includes('destination') || h.includes('travel request name'))
-            };
+            // Find header row (search for keywords in all lines)
+            let headerIndex = -1;
+            let mapping = {};
 
-            // Basic validation of headers
-            if (mapping.employeeId === -1 || (mapping.startDate === -1 && mapping.endDate === -1)) {
-                // If mapping fails, try fallback to original simple format (0-4)
-                if (delimiter === ',') {
-                    mapping.employeeId = 0;
-                    mapping.name = 1;
-                    mapping.startDate = 2;
-                    mapping.endDate = 3;
-                    mapping.destination = 4;
-                } else {
-                    throw new Error('Could not identify required columns (Employee ID, Start Date, End Date)');
+            for (let i = 0; i < Math.min(lines.length, 20); i++) { // Search up to first 20 lines
+                const row = this.parseCSVLine(lines[i], delimiter).map(h => h.trim().toLowerCase());
+                const potentialMapping = {
+                    employeeId: row.findIndex(h => h.includes('employee id')),
+                    name: row.findIndex(h => h === 'employee' || (h.includes('employee') && !h.includes('id'))),
+                    location: row.findIndex(h => h === 'branch' || h === 'location' || h.includes('location')),
+                    startDate: row.findIndex(h => h.includes('leg1 start') || h === 'start date'),
+                    endDate: row.findIndex(h => h.includes('leg1 end') || h === 'end date'),
+                    destination: row.findIndex(h => h.includes('leg1 country') || h.includes('destination') || h.includes('travel request name'))
+                };
+
+                // If we found essential columns, this is the header row
+                if (potentialMapping.employeeId !== -1 && (potentialMapping.startDate !== -1 || potentialMapping.endDate !== -1)) {
+                    headerIndex = i;
+                    mapping = potentialMapping;
+                    break;
                 }
             }
 
-            const dataLines = lines.slice(1);
+            // Fallback for simple format if no header found
+            if (headerIndex === -1) {
+                if (delimiter === ',') {
+                    mapping = { employeeId: 0, name: 1, location: -1, startDate: 2, endDate: 3, destination: 4 };
+                    headerIndex = 0; // Assume first line is header but keyword match failed
+                } else {
+                    throw new Error('Could not identify header row (Employee ID, Start Date, End Date)');
+                }
+            }
+
+            const dataLines = lines.slice(headerIndex + 1);
             const imported = [];
             const errors = [];
             let autoCreatedCount = 0;
 
             dataLines.forEach((line, index) => {
-                if (!line.trim()) return;
-
                 try {
                     const columns = this.parseCSVLine(line, delimiter);
+                    if (columns.length < 2) return;
 
                     const employeeId = columns[mapping.employeeId];
                     const employeeName = mapping.name !== -1 ? columns[mapping.name] : 'New Employee';
@@ -61,9 +68,8 @@ const CSVImporter = {
                     const rawEndDate = mapping.endDate !== -1 ? columns[mapping.endDate] : '';
                     const destination = mapping.destination !== -1 ? columns[mapping.destination] : 'Unknown';
 
-                    if (!employeeId || !rawStartDate || !rawEndDate) {
-                        errors.push(`Row ${index + 2}: Missing required info (ID/Dates)`);
-                        return;
+                    if (!employeeId || employeeId.toLowerCase() === 'employee id' || !rawStartDate || !rawEndDate) {
+                        return; // Skip empty rows or duplicate headers
                     }
 
                     // Normalize dates
@@ -78,18 +84,16 @@ const CSVImporter = {
                     // Check if employee exists, if not, create one
                     let employee = DataModel.getEmployeeById(employeeId);
                     if (!employee) {
-                        // Validate and sanitize location
                         const validLocations = DataModel.getLocations();
                         if (!validLocations.includes(employeeLocation)) {
-                            employeeLocation = validLocations[0]; // Default to first location if invalid
+                            employeeLocation = validLocations[0];
                         }
 
-                        // Create new employee
                         DataModel.addEmployee({
                             id: employeeId,
                             name: employeeName,
                             location: employeeLocation,
-                            department: 'Operations', // Default
+                            department: 'Operations',
                             position: 'other',
                             role: 'general',
                             email: `${employeeId.toLowerCase()}@company.com`
@@ -109,7 +113,7 @@ const CSVImporter = {
 
                     imported.push(...records);
                 } catch (error) {
-                    errors.push(`Row ${index + 2}: ${error.message}`);
+                    errors.push(`Row ${index + headerIndex + 2}: ${error.message}`);
                 }
             });
 
