@@ -171,13 +171,15 @@ const App = {
 
       const today = DataModel.formatDate(new Date());
       const status = checkinType.toLowerCase();
+      const loc = params.get('loc') || '';
 
       if (['office', 'wfh'].includes(status)) {
+        const locationLabel = loc ? ` at ${loc}` : '';
         DataModel.addAttendance({
           employeeId: user.id,
           date: today,
           status: status,
-          note: `QR Check-in (${status.toUpperCase()})`
+          note: `QR Check-in (${status.toUpperCase()}${locationLabel})`
         });
 
         // Remove parameter from URL without reloading
