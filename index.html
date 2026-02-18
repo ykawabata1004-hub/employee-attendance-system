@@ -20,6 +20,31 @@
     <!-- アプリケーションコンテナ -->
     <div id="app"></div>
 
+    <!-- QR Check-in User Selection Modal -->
+    <div id="qr-user-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Select User for Check-in</h3>
+                <button class="modal-close" onclick="App.closeQRModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-md">Please select your name to proceed with the check-in.</p>
+                <div class="search-box mb-md">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="qr-user-search" placeholder="Search by name, department..."
+                        oninput="App.filterQRUsers()">
+                </div>
+                <div id="qr-user-list" class="user-list"
+                    style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <!-- User list will be populated here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="App.closeQRModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
