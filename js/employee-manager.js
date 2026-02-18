@@ -106,6 +106,7 @@ const EmployeeManager = {
     const attendance = DataModel.getAllAttendance();
     const canImport = DataModel.hasPermission('canImport');
     const canExport = DataModel.hasPermission('canExport');
+    const canManage = DataModel.hasPermission('canManageEmployees');
 
     return `
       <div class="card-header">
@@ -164,7 +165,8 @@ const EmployeeManager = {
           ` : ''}
         </div>
         
-        <!-- Emergency reset button (no permission check) -->
+        <!-- Emergency reset button (admin/manager only) -->
+        ${canManage ? `
         <div style="margin-top: var(--spacing-lg); padding-top: var(--spacing-lg); border-top: 1px solid var(--border-color);">
           <p style="color: var(--text-secondary); font-size: var(--font-size-sm); margin-bottom: var(--spacing-sm);">
             <strong>Emergency Reset:</strong> If you cannot access Manager functions, click below to reset all data and regenerate sample data with proper roles.
@@ -173,6 +175,7 @@ const EmployeeManager = {
             🔄 Reset & Regenerate All Data
           </button>
         </div>
+        ` : ''}
       </div>
     `;
   },
