@@ -237,7 +237,8 @@ const CalendarView = {
         employee: emp,
         status: att.status,
         statusInfo: statusInfo,
-        note: att.note
+        note: att.note,
+        country: att.country || ''
       };
     }).filter(e => e !== null);
 
@@ -249,11 +250,22 @@ const CalendarView = {
       <div class="${classes.join(' ')}" onclick="CalendarView.onDayClick('${dateStr}')">
         <div class="calendar-day-number">${date.getDate()}</div>
         <div class="calendar-day-events">
-          ${events.slice(0, 3).map(event => `
-            <div class="calendar-event status-${event.status}" title="${event.employee.name}: ${event.statusInfo.label}${event.note ? ' - ' + event.note : ''}">
-              ${event.employee.name}
+          ${events.slice(0, 3).map(event => {
+      const displayName = event.status === 'business_trip' && event.note ?
+        `${event.employee.name} (${event.note.substring(0, 10)}${event.note.length > 10 ? '...' : ''})` :
+        event.employee.name;
+
+      const tooltip = [
+        `${event.employee.name}: ${event.statusInfo.label}`,
+        event.country ? `Country: ${event.country}` : null,
+        event.note ? `Note: ${event.note}` : null
+      ].filter(Boolean).join(' - ');
+
+      return `
+            <div class="calendar-event status-${event.status}" title="${tooltip}">
+              ${displayName}
             </div>
-          `).join('')}
+          `}).join('')}
           ${events.length > 3 ? `<div class="calendar-event-more">+${events.length - 3} more</div>` : ''}
         </div>
       </div>

@@ -34,7 +34,9 @@ const CSVImporter = {
                     location: row.findIndex(h => h === 'branch' || h === 'location' || h.includes('location')),
                     startDate: row.findIndex(h => h.includes('leg1 start') || h === 'start date' || h.includes('start date')),
                     endDate: row.findIndex(h => h.includes('leg1 end') || h === 'end date' || h.includes('end date')),
-                    destination: row.findIndex(h => h.includes('leg1 country') || h.includes('destination') || h.includes('travel request name') || h.includes('location'))
+                    destination: row.findIndex(h => h.includes('leg1 country') || h.includes('destination') || h.includes('location')),
+                    purpose: row.findIndex(h => h.includes('request purpose') || h === 'purpose'),
+                    country: row.findIndex(h => h.includes('leg1 country') || h === 'country')
                 };
 
                 // Score this row as a potential header
@@ -77,6 +79,8 @@ const CSVImporter = {
                     const rawStartDate = (mapping.startDate !== -1 ? columns[mapping.startDate] : '').trim();
                     const rawEndDate = (mapping.endDate !== -1 ? columns[mapping.endDate] : '').trim();
                     const destination = (mapping.destination !== -1 ? columns[mapping.destination] : 'Unknown').trim();
+                    const purpose = (mapping.purpose !== -1 ? columns[mapping.purpose] : '').trim();
+                    const country = (mapping.country !== -1 ? columns[mapping.country] : destination).trim();
 
                     if (!employeeId || employeeId.toLowerCase() === 'employee id' || !rawStartDate || !rawEndDate) {
                         return;
@@ -118,12 +122,14 @@ const CSVImporter = {
                     }
 
                     // Register business trip data - ALWAYS use employee.id (canonical)
+                    // Use purpose as note, and pass country as metadata
                     const records = DataModel.addAttendanceRange(
                         employee.id,
                         startDate,
                         endDate,
                         'business_trip',
-                        `Business trip to ${destination}`
+                        purpose || `Business trip to ${destination}`,
+                        { country: country }
                     );
 
                     imported.push(...records);

@@ -521,7 +521,7 @@ const DataModel = {
     /**
      * Add attendance range (bulk)
      */
-    addAttendanceRange(employeeId, startDate, endDate, status, note = '') {
+    addAttendanceRange(employeeId, startDate, endDate, status, note = '', meta = {}) {
         const records = [];
 
         // Safety: Parse YYYY-MM-DD string to local date without timezone shifts
@@ -539,7 +539,8 @@ const DataModel = {
                 employeeId,
                 date: dateStr,
                 status,
-                note
+                note,
+                ...meta
             });
             records.push(record);
         }
