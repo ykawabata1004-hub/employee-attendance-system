@@ -166,35 +166,112 @@ const App = {
     const checkinType = params.get('checkin');
 
     if (checkinType) {
-      const user = DataModel.getCurrentUser();
-      if (!user) {
-        alert('Please select your name first at the top-right to use QR check-in.');
-        return;
-      }
+      // Store params for later use
+      this.currentCheckinParams = {
+        type: checkinType.toLowerCase(),
+        loc: params.get('loc') || ''
+      };
 
-      const today = DataModel.formatDate(new Date());
-      const status = checkinType.toLowerCase();
-      const loc = params.get('loc') || '';
-
-      if (['office', 'wfh'].includes(status)) {
-        const locationLabel = loc ? ` at ${loc}` : '';
-        DataModel.addAttendance({
-          employeeId: user.id,
-          date: today,
-          status: status,
-          note: `QR Check-in (${status.toUpperCase()}${locationLabel})`
-        });
-
-        // Remove parameter from URL without reloading
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, '', newUrl);
-
-        alert(`Successfully checked in as ${status.toUpperCase()}!`);
-
-        // Refresh UI
-        this.switchView(this.currentView);
+      // Show User Selection Modal
+      const modal = document.getElementById('qr-user-modal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        this.renderQRUserList();
+        // Focus search box
+        setTimeout(() => document.getElementById('qr-user-search').focus(), 100);
       }
     }
+  },
+
+  /**
+   * Render QR User List with filter
+   */
+  renderQRUserList(filterText = '') {
+    const listContainer = document.getElementById('qr-user-list');
+    if (!listContainer) return;
+
+    const employees = DataModel.getAllEmployees();
+    const normalizedFilter = filterText.toLowerCase().trim();
+
+    const filtered = employees.filter(emp => {
+      return emp.name.toLowerCase().includes(normalizedFilter) ||
+        (emp.department && emp.department.toLowerCase().includes(normalizedFilter)) ||
+        (emp.location && emp.location.toLowerCase().includes(normalizedFilter));
+    });
+
+    if (filtered.length === 0) {
+      listContainer.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--text-secondary);">No users found</div>';
+      return;
+    }
+
+    listContainer.innerHTML = filtered.map(emp => {
+      const positionLabel = DataModel.getPositionInfo(emp.position).label;
+      return `
+        <div class="calendar-event" style="padding: 1rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: var(--surface-color); border: 1px solid var(--border-color); color: var(--text-primary);"
+             onclick="App.selectQRUser('${emp.id}')">
+            <div>
+                <div style="font-weight: 600;">${emp.name}</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary);">${emp.department || '-'} / ${emp.location || '-'}</div>
+            </div>
+            <div style="font-size: 0.8rem; background: var(--hover-bg); padding: 0.2rem 0.5rem; border-radius: 4px;">
+                ${positionLabel}
+            </div>
+        </div>
+      `;
+    }).join('');
+  },
+
+  /**
+   * Filter QR Users
+   */
+  filterQRUsers() {
+    const input = document.getElementById('qr-user-search');
+    this.renderQRUserList(input.value);
+  },
+
+  /**
+   * Select user for QR check-in
+   */
+  selectQRUser(employeeId) {
+    if (!this.currentCheckinParams) return;
+
+    // Set current user
+    DataModel.setCurrentUser(employeeId);
+    this.renderUserSelector(); // Update UI header
+
+    const { type, loc } = this.currentCheckinParams;
+    const user = DataModel.getEmployeeById(employeeId);
+    const today = DataModel.formatDate(new Date());
+
+    if (['office', 'wfh'].includes(type)) {
+      const locationLabel = loc ? ` at ${loc}` : '';
+      DataModel.addAttendance({
+        employeeId: user.id,
+        date: today,
+        status: type,
+        note: `QR Check-in (${type.toUpperCase()}${locationLabel})`
+      });
+
+      // Remove parameter from URL
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+
+      // Close modal
+      this.closeQRModal();
+
+      alert(`Successfully checked in as ${user.name} for ${type.toUpperCase()}!`);
+
+      // Refresh UI
+      this.switchView(this.currentView);
+    }
+  },
+
+  /**
+   * Close QR Modal
+   */
+  closeQRModal() {
+    document.getElementById('qr-user-modal').classList.add('hidden');
+    this.currentCheckinParams = null;
   }
 };
 
