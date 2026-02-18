@@ -197,18 +197,20 @@ const DataModel = {
             if (currentUser) localStorage.setItem(this.STORAGE_KEYS.CURRENT_USER, currentUser);
 
             // Set up listeners for real-time updates
+            // Set up listeners for real-time updates
             FirebaseAdapter.onEmployeesChanged((data) => {
                 localStorage.setItem(this.STORAGE_KEYS.EMPLOYEES, JSON.stringify(data));
-                // Notify UI if needed (simple reload or re-render)
-                if (window.App && this.isInitialized) {
-                    // Optimized re-render could go here
+                // Notify UI
+                if (window.App && this.isInitialized && typeof window.App.onDataUpdated === 'function') {
+                    window.App.onDataUpdated();
                 }
             });
 
             FirebaseAdapter.onAttendanceChanged((data) => {
                 localStorage.setItem(this.STORAGE_KEYS.ATTENDANCE, JSON.stringify(data));
-                if (window.App && this.isInitialized) {
-                    // Optimized re-render could go here
+                // Notify UI
+                if (window.App && this.isInitialized && typeof window.App.onDataUpdated === 'function') {
+                    window.App.onDataUpdated();
                 }
             });
 
@@ -468,8 +470,10 @@ const DataModel = {
 
     /**
      * Add attendance
+     * @param {Object} attendance - Attendance object
+     * @param {boolean} force - Force update regardless of priority
      */
-    addAttendance(attendance) {
+    addAttendance(attendance, force = false) {
         const records = this.getAllAttendance();
 
         // Normalize employeeId to canonical ID from master
@@ -484,10 +488,11 @@ const DataModel = {
 
         if (existing) {
             // Priority Check: Only update if new status has higher or equal priority
+            // UNLESS force is true (e.g. manual override or QR check-in)
             const newPriority = this.STATUS_PRIORITY[attendance.status] || 0;
             const existingPriority = this.STATUS_PRIORITY[existing.status] || 0;
 
-            if (newPriority >= existingPriority) {
+            if (force || newPriority >= existingPriority) {
                 // Merge data (keep existing metadata if not provided in new)
                 return this.updateAttendance(existing.id, {
                     ...attendance,
@@ -532,6 +537,11 @@ const DataModel = {
                 updatedAt: new Date().toISOString()
             };
             localStorage.setItem(this.STORAGE_KEYS.ATTENDANCE, JSON.stringify(records));
+
+            if (this.useFirebase) {
+                FirebaseAdapter.updateAttendance(id, updates);
+            }
+
             return records[index];
         }
         return null;
