@@ -382,8 +382,9 @@ body {
 
 .calendar-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: var(--spacing-sm);
+    width: 100%;
 }
 
 .calendar-day-header {
@@ -404,6 +405,11 @@ body {
     background: var(--surface-color);
     transition: all var(--transition-base);
     cursor: pointer;
+    overflow: hidden;
+}
+
+.calendar-grid.view-mode-week .calendar-day {
+    min-height: 400px;
 }
 
 .calendar-day:hover {
