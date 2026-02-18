@@ -686,7 +686,10 @@ const EmployeeManager = {
       const result = CSVImporter.importConcurCSV(csvText, scope, scopeValue);
 
       if (result.success) {
-        let message = `Imported ${result.imported} business trip records`;
+        let message = `Imported ${result.imported} business trip records.`;
+        if (result.autoCreated > 0) {
+          message += `\n${result.autoCreated} new employees were automatically registered.`;
+        }
         if (result.errors.length > 0) {
           message += `\n\nWarnings/Errors:\n${result.errors.join('\n')}`;
         }

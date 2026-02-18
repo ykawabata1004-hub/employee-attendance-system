@@ -19,13 +19,14 @@ const CSVImporter = {
             const delimiter = firstLine.includes('\t') ? '\t' : ',';
 
             // Parse headers and find column mapping
-            const headers = this.parseCSVLine(lines[0], delimiter);
+            const headers = this.parseCSVLine(lines[0], delimiter).map(h => h.trim().toLowerCase());
             const mapping = {
-                employeeId: headers.findIndex(h => h.includes('Employee ID')),
-                name: headers.findIndex(h => h.includes('Employee') && !h.includes('ID')),
-                startDate: headers.findIndex(h => h.includes('Leg1 Start') || h === 'Start Date'),
-                endDate: headers.findIndex(h => h.includes('Leg1 End') || h === 'End Date'),
-                destination: headers.findIndex(h => h.includes('Leg1 Country') || h.includes('Destination') || h.includes('Travel Request Name'))
+                employeeId: headers.findIndex(h => h.includes('employee id')),
+                name: headers.findIndex(h => h === 'employee' || (h.includes('employee') && !h.includes('id'))),
+                location: headers.findIndex(h => h === 'branch' || h === 'location' || h.includes('location')),
+                startDate: headers.findIndex(h => h.includes('leg1 start') || h === 'start date'),
+                endDate: headers.findIndex(h => h.includes('leg1 end') || h === 'end date'),
+                destination: headers.findIndex(h => h.includes('leg1 country') || h.includes('destination') || h.includes('travel request name'))
             };
 
             // Basic validation of headers
@@ -45,6 +46,7 @@ const CSVImporter = {
             const dataLines = lines.slice(1);
             const imported = [];
             const errors = [];
+            let autoCreatedCount = 0;
 
             dataLines.forEach((line, index) => {
                 if (!line.trim()) return;
@@ -53,6 +55,8 @@ const CSVImporter = {
                     const columns = this.parseCSVLine(line, delimiter);
 
                     const employeeId = columns[mapping.employeeId];
+                    const employeeName = mapping.name !== -1 ? columns[mapping.name] : 'New Employee';
+                    let employeeLocation = mapping.location !== -1 ? columns[mapping.location] : 'LDN';
                     const rawStartDate = mapping.startDate !== -1 ? columns[mapping.startDate] : '';
                     const rawEndDate = mapping.endDate !== -1 ? columns[mapping.endDate] : '';
                     const destination = mapping.destination !== -1 ? columns[mapping.destination] : 'Unknown';
@@ -71,11 +75,26 @@ const CSVImporter = {
                         return;
                     }
 
-                    // Check if employee exists
+                    // Check if employee exists, if not, create one
                     let employee = DataModel.getEmployeeById(employeeId);
                     if (!employee) {
-                        errors.push(`Row ${index + 2}: Employee ID ${employeeId} not found`);
-                        return;
+                        // Validate and sanitize location
+                        const validLocations = DataModel.getLocations();
+                        if (!validLocations.includes(employeeLocation)) {
+                            employeeLocation = validLocations[0]; // Default to first location if invalid
+                        }
+
+                        // Create new employee
+                        DataModel.addEmployee({
+                            id: employeeId,
+                            name: employeeName,
+                            location: employeeLocation,
+                            department: 'Operations', // Default
+                            position: 'other',
+                            role: 'general',
+                            email: `${employeeId.toLowerCase()}@company.com`
+                        });
+                        autoCreatedCount++;
                     }
 
                     // Register business trip data
@@ -97,6 +116,7 @@ const CSVImporter = {
             return {
                 success: true,
                 imported: imported.length,
+                autoCreated: autoCreatedCount,
                 errors: errors
             };
         } catch (error) {
